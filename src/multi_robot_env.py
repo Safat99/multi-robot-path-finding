@@ -22,7 +22,12 @@ class MultiRobotWarehouseEnv(gym.Env):
         # Initialize warehouse and robots
         self.warehouse = np.zeros((grid_size, grid_size))  # Grid representing warehouse
         self.state = np.random.randint(0, grid_size, size=(self.num_robots, 2))  # Robot positions
+        
+        # Task Management
         self.goal_positions = []  # Store task locations
+        self.delivery_stations = self._initialize_delivery_stations()  # Delivery locations (stations at the grid edges)
+        self.tasks = [] # List to track task as pairs (pick-up, drop-off)
+        
         self.spawn_tasks()  # Create initial tasks
         
         pygame.init()
@@ -30,72 +35,121 @@ class MultiRobotWarehouseEnv(gym.Env):
         self.screen = pygame.display.set_mode((self.screen_size, self.screen_size))
         pygame.display.set_caption("Multi-Robot Warehouse")
         self.clock = pygame.time.Clock()  # To control the frame rate
-        
+
+    def _initialize_delivery_stations(self):
+        """Create fixed delivery stations at the edges of the grid."""
+        stations = [(0, 0), (0, self.grid_size-1), (self.grid_size-1, 0), (self.grid_size-1, self.grid_size-1)]
+        return stations
         
     def spawn_tasks(self):
         """Randomly place tasks in the warehouse."""
         for _ in range(5):  # Create 5 initial tasks
-            task_position = tuple(np.random.randint(0, self.grid_size, size=(2)))
-            self.goal_positions.append(task_position)
+            pick_up = tuple(np.random.randint(0, self.grid_size, size=2))  # Random pick-up location
+            drop_off = random.choice(self.delivery_stations)  # Random delivery station
+            self.tasks.append((pick_up, drop_off))
+            self.goal_positions.append(pick_up)  # Pick-up points are the goals for now
 
     def reset(self):
-        """Reset the environment."""
-        self.state = np.random.randint(0, self.grid_size, size=(self.num_robots, 2))
+        """Reset the environment for a new episode"""
         self.current_step = 0
-        self.goal_positions = []
-        self.spawn_tasks()
+        self.state = np.random.randint(0, self.grid_size, size=(self.num_robots, 2))
+        self.tasks = [] # Clear old tasks
+        self.spawn_tasks() # Spawn new tasks
         return self.state
 
     def step(self, actions):
-        # Implement the logic for each step in the environment
-        rewards = []
+        """Execute one step in the environment, move robots, and handle task completion."""
+        # rewards = []
+        self.current_step += 1
         done = False
+        
+        
+        # Move the robots based on actions (same as before, with updated movement)
+        for i in range(self.num_robots):
+            self._move_robot(i, actions[i])  # Action should be a list of actions for each robot
 
-        for i, action in enumerate(actions):
-            current_position = self.state[i]
-            
-            # Update the robot positions based on the action
-            if action == 0:  # Move up
-                new_position = [current_position[0], min(current_position[1] + 1, self.grid_size - 1)]
-            elif action == 1:  # Move down
-                new_position = [current_position[0], max(current_position[1] - 1, 0)]
-            elif action == 2:  # Move left
-                new_position = [max(current_position[0] - 1, 0), current_position[1]]
-            elif action == 3:  # Move right
-                new_position = [min(current_position[0] + 1, self.grid_size - 1), current_position[1]]
-            elif action == 4:  # Move up-right (diagonal)
-                new_position = [min(current_position[0] + 1, self.grid_size - 1), min(current_position[1] + 1, self.grid_size - 1)]
-            elif action == 5:  # Move up-left (diagonal)
-                new_position = [max(current_position[0] - 1, 0), min(current_position[1] + 1, self.grid_size - 1)]
-            elif action == 6:  # Move down-right (diagonal)
-                new_position = [min(current_position[0] + 1, self.grid_size - 1), max(current_position[1] - 1, 0)]
-            elif action == 7:  # Move down-left (diagonal)
-                new_position = [max(current_position[0] - 1, 0), max(current_position[1] - 1, 0)]
-            
-            # Update robot position
-            self.state[i] = new_position
+        # Check if any robot has reached a pick-up location
+        for i, robot_pos in enumerate(self.state):
+            for task in self.tasks:
+                pick_up, drop_off = task
+                if tuple(robot_pos) == pick_up:  # Robot reached the pick-up
+                    # Now assign this robot the task to deliver the item to the drop-off
+                    self.goal_positions[i] = drop_off  # Update goal to the drop-off location
+        
+        # Check if tasks are completed (robots reached drop-off points)
+        for i, robot_pos in enumerate(self.state):
+            if tuple(robot_pos) in self.delivery_stations:
+                # Task completed for this robot
+                done = True  # Assuming one task per episode for simplicity
 
-            # Check for task pickup
-            for task in self.goal_positions:
-                if tuple(self.state[i]) == task:
-                    rewards.append(10)  # Reward for picking up an item
-                    self.goal_positions.remove(task)
-                    # self.spawn_new_task()  # Add new task
-                else:
-                    rewards.append(-1)  # Small negative reward for each step
-            
-            # Collision avoidance (penalize robots in same location)
-            for j in range(i+1, self.num_robots):
-                if np.array_equal(self.state[i], self.state[j]):
-                    rewards[i] -= 5  # Penalize collisions
+        # Reward based on task completion and other criteria
+        reward = self._calculate_reward()
+
+        # Check if episode should end
+        if self.current_step >= self.max_steps or done:
+            done = True
+
 
         # Check if done (if all tasks are completed or max steps reached)
-        self.current_step += 1
-        if len(self.goal_positions) == 0 or self.current_step >= self.max_steps:
+        if self.current_step >= self.max_steps or done:
             done = True
         
         # Calculate reward, next state, and check for done
-        return np.array(self.state), np.sum(rewards), done, {}  
+        # return self.state, np.sum(rewards), done, {}
+        return self.state, reward, done, {}  
+
+    def _move_robot(self, robot_index, action):
+        """Move the robot based on the action"""
+        current_position = self.state[robot_index]
+            
+        # Update the robot positions based on the action
+        if action == 0:  # Move up
+            new_position = [current_position[0], min(current_position[1] + 1, self.grid_size - 1)]
+        elif action == 1:  # Move down
+            new_position = [current_position[0], max(current_position[1] - 1, 0)]
+        elif action == 2:  # Move left
+            new_position = [max(current_position[0] - 1, 0), current_position[1]]
+        elif action == 3:  # Move right
+            new_position = [min(current_position[0] + 1, self.grid_size - 1), current_position[1]]
+        elif action == 4:  # Move up-right (diagonal)
+            new_position = [min(current_position[0] + 1, self.grid_size - 1), min(current_position[1] + 1, self.grid_size - 1)]
+        elif action == 5:  # Move up-left (diagonal)
+            new_position = [max(current_position[0] - 1, 0), min(current_position[1] + 1, self.grid_size - 1)]
+        elif action == 6:  # Move down-right (diagonal)
+            new_position = [min(current_position[0] + 1, self.grid_size - 1), max(current_position[1] - 1, 0)]
+        elif action == 7:  # Move down-left (diagonal)
+            new_position = [max(current_position[0] - 1, 0), max(current_position[1] - 1, 0)]
+        
+        # Update robot position
+        self.state[robot_index] = new_position
+
+    def _calculate_reward(self):
+        reward = 0
+    
+        # Task-related rewards
+        for i, robot_pos in enumerate(self.state):
+            if tuple(robot_pos) in self.delivery_stations:  # Robot delivered the item
+                reward += 10  # Large positive reward for completing the task
+            else:
+                # Small negative reward for each step taken (time penalty)
+                reward -= 1
+                
+                # Calculate Chebyshev distance to the goal
+                goal_pos = self.goal_positions[i]  # Assuming goal position is set for each robot
+                chebyshev_distance = max(abs(robot_pos[0] - goal_pos[0]), abs(robot_pos[1] - goal_pos[1]))
+            
+                # Reward or penalty based on distance to the goal
+                reward += 1 / (chebyshev_distance + 1)  # Smaller distances yield higher rewards (closer to the goal)
+        
+        # Penalize collisions (two robots on the same position)
+        for i in range(self.num_robots):
+            for j in range(i+1, self.num_robots):
+                if np.array_equal(self.state[i], self.state[j]):
+                    reward -= 5  # Collision penalty
+        
+        # Additional conditions can be added here
+        return reward
+        
 
     def spawn_new_task(self):
         """Spawn a new task at a random free location in the warehouse."""
