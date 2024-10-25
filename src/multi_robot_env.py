@@ -58,39 +58,67 @@ class MultiRobotWarehouseEnv(gym.Env):
         return self.state
 
     def step(self, actions):
-        """Execute one step in the environment, move robots, and handle task completion."""
-        # rewards = []
+        """Execute one step in the environment, move robots, and handle task completion. and reassign tasks"""
         self.current_step += 1
         done = False
         
         
-        # Move the robots based on actions (same as before, with updated movement)
+        # Move the robots based on actions
         for i in range(self.num_robots):
-            self._move_robot(i, actions[i])  # Action should be a list of actions for each robot
+            self._move_robot(i, actions[i])  # Move each robot based on its action
 
-        # Check if any robot has reached a pick-up location
+        # Check each robot's position for task handling
         for i, robot_pos in enumerate(self.state):
-            for task in self.tasks:
-                pick_up, drop_off = task
-                if tuple(robot_pos) == pick_up:  # Robot reached the pick-up
-                    # Now assign this robot the task to deliver the item to the drop-off
-                    self.goal_positions[i] = drop_off  # Update goal to the drop-off location
-        
+            # If the robot reaches its current goal
+            if self.goal_positions[i] is not None and tuple(robot_pos) == self.goal_positions[i]:  # Robot reached goal ## added for reassign tasks
+                
+                goal_pos = self.goal_positions[i]
+                
+                # Check if it's a pick-up location                
+                for task in self.tasks:
+                    pick_up, drop_off = task
+                    """
+                    # previous portion without reassignig the tasks --> if want to shift previous version,
+                    # remove all the if-else from this for loop and
+                    # uncomment this portion only.
+                    if tuple(robot_pos) == pick_up:  # Robot reached the pick-up
+                        # Now assign this robot the task to deliver the item to the drop-off
+                        self.goal_positions[i] = drop_off  # Update goal to the drop-off location
+                    """
+                    if goal_pos == pick_up:
+                        self.goal_positions[i] = drop_off  # Update robot's goal to the drop-off location
+                        break
+                    else:
+                        # If the robot is at the drop-off, complete the task and spawn a new one
+                        if goal_pos in self.delivery_stations:
+                            self.goal_positions[i] = None  # Task is complete
+                            self.tasks.remove((pick_up, drop_off))  # Remove completed task
+                
+                            # Spawn a new task and assign it to the robot
+                            new_task = self.spawn_new_task()
+                            if new_task:
+                                pick_up, drop_off = new_task
+                                self.tasks.append(new_task)
+                                self.goal_positions[i] = pick_up  # New task's pick-up point is the new goal
+                    # If goal was neither pick-up nor drop-off, do nothing
+                                
         # Check if tasks are completed (robots reached drop-off points)
-        for i, robot_pos in enumerate(self.state):
-            if tuple(robot_pos) in self.delivery_stations:
-                # Task completed for this robot
-                done = True  # Assuming one task per episode for simplicity
+        # completed_tasks = 0
+        # for i, robot_pos in enumerate(self.state):
+        #     # if tuple(robot_pos) in self.delivery_stations:
+        #     if tuple(robot_pos) == self.goal_positions[i]: # Robot reached the assigned drop-off
+        #         completed_tasks += 1
+        #         self.goal_positions[i] = None # Mark task as completed for this robot
+        completed_tasks = sum(1 for i in range(self.num_robots) if self.goal_positions[i] is None)
+        
+                
+        if completed_tasks == self.num_robots:
+            done = True
 
         # Reward based on task completion and other criteria
         reward = self._calculate_reward()
 
         # Check if episode should end
-        if self.current_step >= self.max_steps or done:
-            done = True
-
-
-        # Check if done (if all tasks are completed or max steps reached)
         if self.current_step >= self.max_steps or done:
             done = True
         
@@ -136,10 +164,10 @@ class MultiRobotWarehouseEnv(gym.Env):
                 
                 # Calculate Chebyshev distance to the goal
                 goal_pos = self.goal_positions[i]  # Assuming goal position is set for each robot
-                chebyshev_distance = max(abs(robot_pos[0] - goal_pos[0]), abs(robot_pos[1] - goal_pos[1]))
-            
-                # Reward or penalty based on distance to the goal
-                reward += 1 / (chebyshev_distance + 1)  # Smaller distances yield higher rewards (closer to the goal)
+                if goal_pos is not None:
+                    chebyshev_distance = max(abs(robot_pos[0] - goal_pos[0]), abs(robot_pos[1] - goal_pos[1]))
+                    # Reward or penalty based on distance to the goal
+                    reward += 1 / (chebyshev_distance + 1)  # Smaller distances yield higher rewards (closer to the goal)
         
         # Penalize collisions (two robots on the same position)
         for i in range(self.num_robots):
@@ -153,10 +181,22 @@ class MultiRobotWarehouseEnv(gym.Env):
 
     def spawn_new_task(self):
         """Spawn a new task at a random free location in the warehouse."""
-        empty_spaces = [(x, y) for x in range(self.grid_size) for y in range(self.grid_size) if (x, y) not in self.state.tolist() and (x, y) not in self.goal_positions]
-        new_task_location = random.choice(empty_spaces)
-        self.goal_positions.append(new_task_location)           
+        empty_spaces = [(x, y) for x in range(self.grid_size) for y in range(self.grid_size)
+                        if (x, y) not in self.state.tolist() and (x, y) not in [goal for goal in self.goal_positions if goal is not None]]
+        # new_task_location = random.choice(empty_spaces)
+        # self.goal_positions.append(new_task_location)
         
+        if empty_spaces:  # Ensure there are free spaces
+            pick_up = random.choice(empty_spaces)
+            drop_off = random.choice(self.delivery_stations)  # Assign random delivery station
+            
+            new_task = (pick_up, drop_off)
+            self.tasks.append(new_task)
+            
+            return new_task           
+        return None
+    
+    
     def render_with_pyplot(self, mode='human'):
         fig, ax = plt.subplots()
         ax.set_xlim(0, self.grid_size)
