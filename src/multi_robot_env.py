@@ -43,8 +43,17 @@ class MultiRobotWarehouseEnv(gym.Env):
         
     def spawn_tasks(self):
         """Randomly place tasks in the warehouse."""
+        station_positions = set(self.delivery_stations)
+        # station_positions = set(self.delivery_stations + self.pickup_stations)  # Set of all station locations
+        
         for _ in range(5):  # Create 5 initial tasks
-            pick_up = tuple(np.random.randint(0, self.grid_size, size=2))  # Random pick-up location
+            
+            # Generate a random pick-up location that is not in station_positions
+            while True:
+                pick_up = tuple(np.random.randint(0, self.grid_size, size=2))  # Random pick-up location
+                if pick_up not in station_positions:
+                    break  # Found a valid pick-up location
+            
             drop_off = random.choice(self.delivery_stations)  # Random delivery station
             self.tasks.append((pick_up, drop_off))
             self.goal_positions.append(pick_up)  # Pick-up points are the goals for now
@@ -62,60 +71,56 @@ class MultiRobotWarehouseEnv(gym.Env):
         self.current_step += 1
         done = False
         
-        
         # Move the robots based on actions
         for i in range(self.num_robots):
             self._move_robot(i, actions[i])  # Move each robot based on its action
-
+            
         # Check each robot's position for task handling
         for i, robot_pos in enumerate(self.state):
-            # If the robot reaches its current goal
-            if self.goal_positions[i] is not None and tuple(robot_pos) == self.goal_positions[i]:  # Robot reached goal ## added for reassign tasks
+            current_goal = self.goal_positions[i]
+            
+            if current_goal is not None:
                 
-                goal_pos = self.goal_positions[i]
+                # Check if the robot reached its current goal (pickup or drop-off)    
+                if tuple(robot_pos) == current_goal:  # Robot reached goal ## added for reassign tasks
                 
-                # Check if it's a pick-up location                
-                for task in self.tasks:
-                    pick_up, drop_off = task
-                    """
-                    # previous portion without reassignig the tasks --> if want to shift previous version,
-                    # remove all the if-else from this for loop and
-                    # uncomment this portion only.
-                    if tuple(robot_pos) == pick_up:  # Robot reached the pick-up
-                        # Now assign this robot the task to deliver the item to the drop-off
-                        self.goal_positions[i] = drop_off  # Update goal to the drop-off location
-                    """
-                    if goal_pos == pick_up:
-                        self.goal_positions[i] = drop_off  # Update robot's goal to the drop-off location
-                        break
-                    else:
-                        # If the robot is at the drop-off, complete the task and spawn a new one
-                        if goal_pos in self.delivery_stations:
-                            self.goal_positions[i] = None  # Task is complete
+                    # Check if it's a pick-up location                
+                    for task in self.tasks:
+                        pick_up, drop_off = task
+                        
+                        """
+                        # previous portion without reassignig the tasks --> if want to shift previous version,
+                        # remove all the if-else from this for loop and
+                        # uncomment this portion only.
+                        if tuple(robot_pos) == pick_up:  # Robot reached the pick-up
+                            # Now assign this robot the task to deliver the item to the drop-off
+                            self.goal_positions[i] = drop_off  # Update goal to the drop-off location
+                        """
+                        
+                        if current_goal == pick_up:
+                            self.goal_positions[i] = drop_off  # Update robot's goal to the drop-off location
+                            break
+                        
+                        elif current_goal == drop_off:
+                            # Robot reached the drop-off point, complete task
+                            self.goal_positions[i] = None
                             self.tasks.remove((pick_up, drop_off))  # Remove completed task
-                
+                    
                             # Spawn a new task and assign it to the robot
                             new_task = self.spawn_new_task()
                             if new_task:
-                                pick_up, drop_off = new_task
+                                new_pick_up, new_drop_off = new_task
                                 self.tasks.append(new_task)
-                                self.goal_positions[i] = pick_up  # New task's pick-up point is the new goal
-                    # If goal was neither pick-up nor drop-off, do nothing
+                                self.goal_positions[i] = new_pick_up  # Assign new pick-up point as the new goal
+                            break                        
+                        # If goal was neither pick-up nor drop-off, do nothing
                                 
-        # Check if tasks are completed (robots reached drop-off points)
-        # completed_tasks = 0
-        # for i, robot_pos in enumerate(self.state):
-        #     # if tuple(robot_pos) in self.delivery_stations:
-        #     if tuple(robot_pos) == self.goal_positions[i]: # Robot reached the assigned drop-off
-        #         completed_tasks += 1
-        #         self.goal_positions[i] = None # Mark task as completed for this robot
-        completed_tasks = sum(1 for i in range(self.num_robots) if self.goal_positions[i] is None)
-        
-                
+        # Check if all tasks are completed (all robots reached their final drop-off points)
+        completed_tasks = sum(1 for goal in self.goal_positions if goal is None)
         if completed_tasks == self.num_robots:
             done = True
 
-        # Reward based on task completion and other criteria
+        # Calculate the reward based on task progress or completion
         reward = self._calculate_reward()
 
         # Check if episode should end
@@ -233,10 +238,14 @@ class MultiRobotWarehouseEnv(gym.Env):
         BLACK = (0, 0, 0)
         WHITE = (255, 255, 255)
         RED = (255, 0, 0)
-        # GREEN = (0, 255, 0)   
+        GREEN = (0, 255, 0)   
         BLUE = (0, 0, 255)
 
         self.screen.fill(WHITE)
+        
+        # Fonts for text
+        font_size = max(12, cell_size // 3)
+        font = pygame.font.Font(None, font_size)
         
         # Draw grid
         for x in range(self.grid_size):
@@ -245,12 +254,32 @@ class MultiRobotWarehouseEnv(gym.Env):
 
         # Draw robots
         for i, robot_pos in enumerate(self.state):
-            pygame.draw.circle(self.screen, BLUE, (robot_pos[0] * cell_size + cell_size // 2, robot_pos[1] * cell_size + cell_size // 2), cell_size // 3)
-
+            # Draw robot as a circle
+            robot_center = (robot_pos[0] * cell_size + cell_size // 2, robot_pos[1] * cell_size + cell_size // 2)
+            pygame.draw.circle(self.screen, BLUE, robot_center, cell_size // 3)
+            
+            # Draw robot ID text centered in the circle
+            text = font.render(str(i), True, BLACK)
+            text_rect = text.get_rect(center=robot_center)  # Center text within the circle
+            self.screen.blit(text, text_rect)
+            
         # Draw tasks
-        for task in self.goal_positions:
-            pygame.draw.rect(self.screen, RED, (task[0] * cell_size + 5, task[1] * cell_size + 5, cell_size - 10, cell_size - 10))
+        for j, task_pos in enumerate(self.goal_positions):
+            if task_pos is not None:  # Ensure task position exists
+                task_rect = pygame.Rect(task_pos[0] * cell_size + 5, task_pos[1] * cell_size + 5, cell_size - 10, cell_size - 10)
+                pygame.draw.rect(self.screen, RED, task_rect)
 
+                # Draw task ID text centered in the square
+                task_text = font.render(str(j), True, WHITE)
+                task_text_rect = task_text.get_rect(center=task_rect.center)  # Center text within the square
+                self.screen.blit(task_text, task_text_rect)
+        
+        # Draw delivery stations            
+        for station in self.delivery_stations:
+            station_center = (station[0] * cell_size + cell_size // 2, station[1] * cell_size + cell_size // 2)
+            pygame.draw.circle(self.screen, GREEN, station_center, cell_size // 4)
+        
+        
         pygame.display.flip()
         
         # Frame rate control
