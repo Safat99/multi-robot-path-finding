@@ -105,19 +105,21 @@ class MultiRobotWarehouseEnv(gym.Env):
                             # Robot reached the drop-off point, complete task
                             self.goal_positions[i] = None
                             self.tasks.remove((pick_up, drop_off))  # Remove completed task
-                    
-                            # Spawn a new task and assign it to the robot
-                            new_task = self.spawn_new_task()
-                            if new_task:
-                                new_pick_up, new_drop_off = new_task
-                                self.tasks.append(new_task)
-                                self.goal_positions[i] = new_pick_up  # Assign new pick-up point as the new goal
-                            break                        
+
+                            print(f"Step: {self.current_step}, Done: {done}, Remaining Tasks: {len(self.tasks)}")
+                            
+                            # # Spawn a new task and assign it to the robot
+                            # new_task = self.spawn_new_task()
+                            # if new_task:
+                            #     new_pick_up, new_drop_off = new_task
+                            #     self.tasks.append(new_task)
+                            #     self.goal_positions[i] = new_pick_up  # Assign new pick-up point as the new goal
+                            # break                        
                         # If goal was neither pick-up nor drop-off, do nothing
                                 
         # Check if all tasks are completed (all robots reached their final drop-off points)
         completed_tasks = sum(1 for goal in self.goal_positions if goal is None)
-        if completed_tasks == self.num_robots:
+        if not self.tasks and completed_tasks == self.num_robots:
             done = True
 
         # Calculate the reward based on task progress or completion
