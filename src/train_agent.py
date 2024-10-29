@@ -1,9 +1,9 @@
 import numpy as np
 from multi_robot_env import MultiRobotWarehouseEnv
 from dql_agent import DQLAgent
-# import tensorflow as tf
 import logging
-#import os
+import os
+import re
 import threading
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +20,16 @@ logging.basicConfig(level=logging.INFO)
 #             [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024)])  # Set limit (e.g., 1024 MB)
 #     except RuntimeError as e:
 #         print(e)
+
+def find_latest_checkpoint():
+    # List all files in the current directory and filter for weights files
+    weights_files = [f for f in os.listdir() if re.match(r"dqn_model_\d+\.weights\.h5", f)]
+    if not weights_files:
+        return None  # No checkpoint files available, start fresh
+
+    # Extract episode numbers from file names and find the highest one
+    latest_checkpoint = max(weights_files, key=lambda x: int(re.findall(r'\d+', x)[0]))
+    return latest_checkpoint
 
 
 def train_dqn_agent(num_robots=2, episodes=100, batch_size=32):
@@ -71,6 +81,44 @@ def train_dqn_agent(num_robots=2, episodes=100, batch_size=32):
 
 def run_training():
     train_dqn_agent()
+
+def test_dqn_agent(checkpoint_path, num_robots=2, test_episodes=10):
+    # Initialize environment and agent
+    env = MultiRobotWarehouseEnv(num_robots=num_robots)
+    state_size = env.observation_space.shape[0] * env.observation_space.shape[1]
+    action_size = 8
+    agent = DQLAgent(state_size, action_size)
+    
+    # Load the specified checkpoint
+    agent.load(checkpoint_path)
+    logging.info(f"Testing agent loaded from {checkpoint_path}")
+    
+    # Run multiple test episodes and calculate the average reward
+    total_rewards = []
+    for episode in range(test_episodes):
+        state = env.reset()
+        state = np.reshape(state, [1, state_size])
+        episode_reward = 0
+
+        for time in range(500):  # Set max steps per episode
+            # Act without exploration (set epsilon to 0 for testing)
+            agent.epsilon = 0
+            actions = [agent.act(state) for _ in range(num_robots)]
+            next_state, reward, done, _ = env.step(actions)
+            next_state = np.reshape(next_state, [1, state_size])
+            
+            state = next_state
+            episode_reward += reward
+            
+            if done:
+                break
+
+        total_rewards.append(episode_reward)
+        logging.info(f"Test Episode: {episode + 1}/{test_episodes}, Reward: {episode_reward}")
+
+    avg_reward = np.mean(total_rewards)
+    logging.info(f"Average Reward over {test_episodes} test episodes: {avg_reward}")
+
 
 if __name__ == "__main__":
     training_thread = threading.Thread(target=run_training)
