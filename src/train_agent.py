@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from multi_robot_env import MultiRobotWarehouseEnv
 from dql_agent import DQLAgent
 import logging
@@ -40,6 +41,10 @@ def train_dqn_agent(num_robots=2, episodes=100, batch_size=32):
     action_size = 8
 
     agent = DQLAgent(state_size, action_size)
+    
+    # Initialize lists to store metrics
+    episode_rewards = []
+    episode_epsilons = []
 
     for e in range(episodes):
         logging.info(f"Episode {e + 1}/{episodes} starting...")
@@ -70,6 +75,11 @@ def train_dqn_agent(num_robots=2, episodes=100, batch_size=32):
             # Perform experience replay once enough samples are collected
             if len(agent.memory) > batch_size:
                 agent.replay(batch_size)
+        
+        
+        # Append metrics to the lists
+        episode_rewards.append(total_reward)
+        episode_epsilons.append(agent.epsilon)
 
         # Save the model every 50 episodes
         if e % 50 == 0:
@@ -77,10 +87,41 @@ def train_dqn_agent(num_robots=2, episodes=100, batch_size=32):
 
         # print(f"Episode {e + 1}/{episodes} finished with total reward: {total_reward}")
         logging.info(f"Episode {e + 1}/{episodes} finished with total reward: {total_reward}")
+        
+        # Save metrics to a file for later plotting
+        np.save("episode_rewards.npy", episode_rewards)
+        np.save("episode_epsilons.npy", episode_epsilons)
 
+
+def plot_training_history():
+    # Load saved metrics
+    episode_rewards = np.load("episode_rewards.npy")
+    episode_epsilons = np.load("episode_epsilons.npy")
+
+    # Plot Episode Rewards
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.plot(episode_rewards, label="Total Reward per Episode")
+    plt.xlabel("Episode")
+    plt.ylabel("Total Reward")
+    plt.title("Training Reward per Episode")
+    plt.legend()
+
+    # Plot Epsilon Decay
+    plt.subplot(1, 2, 2)
+    plt.plot(episode_epsilons, label="Epsilon Decay", color="orange")
+    plt.xlabel("Episode")
+    plt.ylabel("Epsilon")
+    plt.title("Epsilon Decay over Episodes")
+    plt.legend()
+
+    plt.tight_layout()
+    plt.savefig("training_history.png")
+    plt.show()
 
 def run_training():
     train_dqn_agent()
+    plot_training_history()
 
 def test_dqn_agent(checkpoint_path, num_robots=2, test_episodes=10):
     # Initialize environment and agent
