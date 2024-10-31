@@ -8,7 +8,7 @@ import random
 
 
 class MultiRobotWarehouseEnv(gym.Env):
-    def __init__(self, num_robots=3, grid_size=10, max_steps=100):
+    def __init__(self, num_robots=3, grid_size=10, max_steps=100, render_mode = False, task_positions = None, robot_positions = None):
         super(MultiRobotWarehouseEnv, self).__init__()
         self.num_robots = num_robots
         self.grid_size = grid_size
@@ -21,32 +21,39 @@ class MultiRobotWarehouseEnv(gym.Env):
         
         # Initialize warehouse and robots
         self.warehouse = np.zeros((grid_size, grid_size))  # Grid representing warehouse
-        self.state = np.random.randint(0, grid_size, size=(self.num_robots, 2))  # Robot positions
+        self.state = robot_positions or np.random.randint(0, grid_size, size=(self.num_robots, 2))  # Robot positions
         
         # Task Management
-        self.goal_positions = []  # Store task locations
+        self.goal_positions = task_positions or []  # Store task locations
         self.delivery_stations = self._initialize_delivery_stations()  # Delivery locations (stations at the grid edges)
         self.tasks = [] # List to track task as pairs (pick-up, drop-off)
         
-        self.spawn_tasks()  # Create initial tasks
-        
-        pygame.init()
-        self.screen_size = 600
-        self.screen = pygame.display.set_mode((self.screen_size, self.screen_size))
-        pygame.display.set_caption("Multi-Robot Warehouse")
-        self.clock = pygame.time.Clock()  # To control the frame rate
+        if self.goal_positions == []:
+            # handling random task set up case 
+            self.spawn_tasks()  # Create initial tasks
+        else:
+            self.tasks = [(task_positions[i], random.choice(self.delivery_stations)) for i in range(len(task_positions))] # custom set-up's pick up and random drop off
+
+        if render_mode:
+            pygame.init()
+            self.screen_size = 600
+            self.screen = pygame.display.set_mode((self.screen_size, self.screen_size))
+            pygame.display.set_caption("Multi-Robot Warehouse")
+            self.clock = pygame.time.Clock()  # To control the frame rate
 
     def _initialize_delivery_stations(self):
         """Create fixed delivery stations at the edges of the grid."""
         stations = [(0, 0), (0, self.grid_size-1), (self.grid_size-1, 0), (self.grid_size-1, self.grid_size-1)]
         return stations
         
-    def spawn_tasks(self):
+    # def spawn_tasks(self, num_tasks):
+    def spawn_tasks(self): # uncomment during training
         """Randomly place tasks in the warehouse."""
         station_positions = set(self.delivery_stations)
         # station_positions = set(self.delivery_stations + self.pickup_stations)  # Set of all station locations
         
-        for _ in range(5):  # Create 5 initial tasks
+        # for _ in range(num_tasks):
+        for _ in range(5):  # Create 5 initial tasks # uncomment during training
             
             # Generate a random pick-up location that is not in station_positions
             while True:
@@ -109,12 +116,12 @@ class MultiRobotWarehouseEnv(gym.Env):
                             print(f"Step: {self.current_step}, Done: {done}, Remaining Tasks: {len(self.tasks)}")
                             
                             # # Spawn a new task and assign it to the robot
-                            # new_task = self.spawn_new_task()
-                            # if new_task:
-                            #     new_pick_up, new_drop_off = new_task
-                            #     self.tasks.append(new_task)
-                            #     self.goal_positions[i] = new_pick_up  # Assign new pick-up point as the new goal
-                            # break                        
+                            new_task = self.spawn_new_task()
+                            if new_task:
+                                new_pick_up, new_drop_off = new_task
+                                self.tasks.append(new_task)
+                                self.goal_positions[i] = new_pick_up  # Assign new pick-up point as the new goal
+                            break                        
                         # If goal was neither pick-up nor drop-off, do nothing
                                 
         # Check if all tasks are completed (all robots reached their final drop-off points)
