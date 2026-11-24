@@ -137,7 +137,7 @@ def test_dqn_agent(checkpoint_path, num_robots=2, test_episodes=10):
         logging.warning("No checkpoint found to load for testing.")
         return
     
-     # Metrics storage
+    # Metrics storage
     total_rewards, total_steps, success_count = [], [], 0
 
     # Run multiple test episodes and calculate the average reward
@@ -150,7 +150,7 @@ def test_dqn_agent(checkpoint_path, num_robots=2, test_episodes=10):
         for time in range(500):  # Set max steps per episode
             agent.epsilon = 0   # Act without exploration (set epsilon to 0 for testing)
             actions = [agent.act(state) for _ in range(num_robots)]
-            next_state, reward, done, _ = env.step(actions)
+            next_state, reward, done, info = env.step(actions)
             next_state = np.reshape(next_state, [1, state_size])
             
             state = next_state
@@ -158,7 +158,8 @@ def test_dqn_agent(checkpoint_path, num_robots=2, test_episodes=10):
             steps += 1
             
             if done:
-                success_count += 1
+                if info.get("is_success", False):
+                    success_count += 1
                 break
         
         # Log episode stats
@@ -203,4 +204,4 @@ if __name__ == "__main__":
     # training_thread.start()
     # training_thread.join()
     # plot_training_history()
-    test_dqn_agent(checkpoint_path="dqn_model_10.weights.h5", num_robots=5, test_episodes=5)
+    test_dqn_agent(checkpoint_path="dqn_model_50.weights.h5", num_robots=5, test_episodes=5)

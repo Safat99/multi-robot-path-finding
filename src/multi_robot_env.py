@@ -8,7 +8,7 @@ import random
 
 
 class MultiRobotWarehouseEnv(gym.Env):
-    def __init__(self, num_robots=3, grid_size=10, max_steps=100, render_mode = False, task_positions = None, robot_positions = None):
+    def __init__(self, num_robots=3, grid_size=10, max_steps=400, render_mode = False, task_positions = None, robot_positions = None):
         super(MultiRobotWarehouseEnv, self).__init__()
         self.num_robots = num_robots
         self.grid_size = grid_size
@@ -77,6 +77,7 @@ class MultiRobotWarehouseEnv(gym.Env):
         """Execute one step in the environment, move robots, and handle task completion. and reassign tasks"""
         self.current_step += 1
         done = False
+        is_success = False  # New flag for true task completion
         
         # Move the robots based on actions
         for i in range(self.num_robots):
@@ -128,17 +129,18 @@ class MultiRobotWarehouseEnv(gym.Env):
         completed_tasks = sum(1 for goal in self.goal_positions if goal is None)
         if not self.tasks and completed_tasks == self.num_robots:
             done = True
+            is_success = True  # Mark success for task completion
 
         # Calculate the reward based on task progress or completion
         reward = self._calculate_reward()
 
         # Check if episode should end
-        if self.current_step >= self.max_steps or done:
+        if self.current_step >= self.max_steps:
             done = True
         
         # Calculate reward, next state, and check for done
         # return self.state, np.sum(rewards), done, {}
-        return self.state, reward, done, {}  
+        return self.state, reward, done, {"is_success": is_success}  
 
     def _move_robot(self, robot_index, action):
         """Move the robot based on the action"""
@@ -149,7 +151,7 @@ class MultiRobotWarehouseEnv(gym.Env):
             new_position = [current_position[0], min(current_position[1] + 1, self.grid_size - 1)]
         elif action == 1:  # Move down
             new_position = [current_position[0], max(current_position[1] - 1, 0)]
-        elif action == 2:  # Move left
+        elif action == 2:  # Move leftrobot
             new_position = [max(current_position[0] - 1, 0), current_position[1]]
         elif action == 3:  # Move right
             new_position = [min(current_position[0] + 1, self.grid_size - 1), current_position[1]]

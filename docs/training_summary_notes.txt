@@ -1,0 +1,45 @@
+this training was initially for 400 episodes...but after spending huge time... decided to close the training after 53/54 episodes.
+
+did add little complexity in the step function. when a bot is completed with a task. it will be assigned to another.
+That was the plan. don't know what the agents have trained. 
+
+also,
+number of robots are 2
+grid-size/state space is 10,10 >> [[0,9], [0,9]]
+batch size = 32
+
+observation_space >> imp >> number of robot * per_robots co-ordinate >> 2 * 2 >> 4 (if #robots 5 then >> 10)
+
+about the task >>
+there are initallay 5 tasks per episode. an episode is consists of 400 steps
+once 5 tasks are completed the new episode will be started, or max 400 steps will be iterated.
+
+this is the test result of using weights of 50 and number of episode 5 
+1/1 [==============================] - 0s 15ms/step
+INFO:root:Test Episode: 5/5, Reward: -1215.134920634921, Steps: 100
+INFO:root:Average Reward over 5 test episodes: -840.8480952380953
+
+
+
+
+why we couldn't test with dynamic number of robots?
+>>
+if your trained DQN model cannot generalize to a dynamic number of robots, 
+the limitation likely lies in how the state space and action space **are defined**.
+
+1. State Space Dependency:
+The state space is often defined based on the number of robots (e.g., positions, goals, or observations). 
+If the training assumes a fixed number of robots, the model will struggle to adapt to more or fewer robots during testing.
+
+2. Action Space Dependency:
+The action space might also be fixed for a set number of robots (e.g., each robot having its own set of actions).
+This creates a hard dependency on the number of robots during both training and testing.
+
+what to do?
+>> 
+Making the Model Dynamic
+To allow your model to handle a **variable number of robots**, we need to decouple the state-action representation from the number of robots. Here's how:
+
+1. Use a Multi-Agent Framework
+Treat each robot as an independent agent with its own policy. Instead of training a single monolithic DQN, you train separate policies that can scale across different numbers of agents.
+Alternatively, use a shared policy (parameter-sharing approach), where one policy is trained and shared across all robots.
